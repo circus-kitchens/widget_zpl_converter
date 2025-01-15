@@ -1,10 +1,11 @@
-library widget_zpl_converter;
+library;
 
 import 'dart:typed_data';
-import 'package:image/image.dart' as img;
+
 import 'package:flutter/material.dart';
-import 'package:screenshot/screenshot.dart';
 import 'package:hex/hex.dart';
+import 'package:image/image.dart' as img;
+import 'package:screenshot/screenshot.dart';
 
 /// Converts any Flutter Widget to a print-ready ZPL command. Intended for Label mode printing.
 ///
@@ -178,4 +179,3 @@ class ImageZplConverter {
     return _findNearestEightMultiple(height);
   }
 }
-
