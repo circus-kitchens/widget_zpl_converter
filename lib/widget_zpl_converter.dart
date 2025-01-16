@@ -38,8 +38,8 @@ class ImageZplConverter {
   /// 7. Generate the ZPL command
   ///
   /// Returns the ZPL command as a [String]
-  Future<String> convert() async {
-    final screenshot = await takeScreenshot();
+  Future<String> convert([BuildContext? context]) async {
+    final screenshot = await takeScreenshot(context);
     final greyScaleImage = _convertToGreyScale(screenshot);
     final resizedImage = _resizeImage(greyScaleImage);
     final pixelBits = _binarizeImage(resizedImage);
@@ -57,8 +57,9 @@ class ImageZplConverter {
   /// Captures the widget as an image
   ///
   /// Returns the image as a [Uint8List]
-  Future<Uint8List> takeScreenshot() async {
-    final screenshot = await _screenshotController.captureFromWidget(widget);
+  Future<Uint8List> takeScreenshot([BuildContext? context]) async {
+    final screenshot =
+        await _screenshotController.captureFromWidget(widget, context: context);
 
     return screenshot.buffer.asUint8List();
   }
