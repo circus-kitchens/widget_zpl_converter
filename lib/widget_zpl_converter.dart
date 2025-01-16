@@ -95,7 +95,8 @@ class ImageZplConverter {
       for (int w = 0; w < image.width; w++) {
         final rgb = image.getPixelSafe(w, h);
 
-        Uint32List list = Uint32List.fromList([rgb]);
+        Uint32List list =
+            Uint32List.fromList(rgb.toList().map((e) => e.ceil()).toList());
         Uint8List byteData = list.buffer.asUint8List();
 
         int bit = 0;

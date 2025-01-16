@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  image: ^3.0.2
+  image: ^4.2.0
   hex: ^0.2.0
   screenshot: ^3.0.0
 
