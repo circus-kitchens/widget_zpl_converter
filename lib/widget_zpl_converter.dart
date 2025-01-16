@@ -39,7 +39,7 @@ class ImageZplConverter {
   ///
   /// Returns the ZPL command as a [String]
   Future<String> convert() async {
-    final screenshot = await _screenshot();
+    final screenshot = await takeScreenshot();
     final greyScaleImage = _convertToGreyScale(screenshot);
     final resizedImage = _resizeImage(greyScaleImage);
     final pixelBits = _binarizeImage(resizedImage);
@@ -57,7 +57,7 @@ class ImageZplConverter {
   /// Captures the widget as an image
   ///
   /// Returns the image as a [Uint8List]
-  Future<Uint8List> _screenshot() async {
+  Future<Uint8List> takeScreenshot() async {
     final screenshot = await _screenshotController.captureFromWidget(widget);
 
     return screenshot.buffer.asUint8List();
@@ -174,7 +174,7 @@ class ImageZplConverter {
   ///
   /// The height is calculated to be half the width, following Labels' aspect ratio
   int _calculateHeight() {
-    int height = width ~/ 2;
+    int height = width ~/ 1.9;
 
     return _findNearestEightMultiple(height);
   }
