@@ -29,8 +29,8 @@ class ImageZplConverter {
   /// Converts the widget to a ZPL command
   ///
   /// The [widget] goes through the following operations:
-  /// 1. Capture the widget as an image
-  /// 2. Convert the image to greyscale
+  /// 1. Capture the widget as an bit list
+  /// 2. Decode the image
   /// 3. Resize the image to the desired width and height
   /// 4. Convert the image to binary
   /// 5. Convert the binary to bytes
@@ -40,8 +40,8 @@ class ImageZplConverter {
   /// Returns the ZPL command as a [String]
   Future<String> convert([BuildContext? context]) async {
     final screenshot = await takeScreenshot(context);
-    final greyScaleImage = _convertToGreyScale(screenshot);
-    final resizedImage = _resizeImage(greyScaleImage);
+    final decodedImage = _decodeImage(screenshot);
+    final resizedImage = _resizeImage(decodedImage);
     final pixelBits = _binarizeImage(resizedImage);
     final pixelBytes = _byteRepresentation(pixelBits);
     final hexBody = _hexRepresentation(pixelBytes);
@@ -64,13 +64,11 @@ class ImageZplConverter {
     return screenshot.buffer.asUint8List();
   }
 
-  /// Converts the image to greyscale
-  img.Image _convertToGreyScale(Uint8List image) {
+  /// Decodes the image
+  img.Image _decodeImage(Uint8List image) {
     final decodedImage = img.decodeImage(image);
 
-    final greyScaleImage = img.grayscale(decodedImage!);
-
-    return greyScaleImage;
+    return decodedImage!;
   }
 
   /// Resizes the image to the desired width and height
@@ -95,19 +93,7 @@ class ImageZplConverter {
     for (int h = 0; h < image.height; h++) {
       for (int w = 0; w < image.width; w++) {
         final rgb = image.getPixelSafe(w, h);
-
-        Uint32List list =
-            Uint32List.fromList(rgb.toList().map((e) => e.ceil()).toList());
-        Uint8List byteData = list.buffer.asUint8List();
-
-        int bit = 0;
-
-        // Threshold image
-        // If pixel is darker than 50% grey, set bit to 1
-        if (byteData.first < 128 && byteData.last > 128) {
-          bit = 1;
-        }
-
+        final bit = rgb.any((value) => value != 0) ? 1 : 0;
         pixelBits.add(bit);
       }
     }
