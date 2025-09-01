@@ -1,23 +1,67 @@
 library widget_zpl_converter;
 
 import 'dart:typed_data';
-import 'package:image/image.dart' as img;
+
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:screenshot/screenshot.dart';
-import 'package:hex/hex.dart';
+
+/// Rotation options for ZPL image output
+enum ZplRotation {
+  /// Normal orientation (0 degrees)
+  normal,
+
+  /// Rotated 90 degrees clockwise
+  rotate90,
+
+  /// Rotated 180 degrees
+  rotate180,
+
+  /// Rotated 270 degrees clockwise (90 degrees counterclockwise)
+  rotate270,
+}
 
 /// Converts any Flutter Widget to a print-ready ZPL command. Intended for Label mode printing.
 ///
 /// See [ImageZplConverter.convert] for usage
 class ImageZplConverter {
   /// Creates a new [ImageZplConverter]
-  ImageZplConverter(this.widget, {this.width = 560});
+  ImageZplConverter(
+    this.widget, {
+    int width = 560,
+    this.threshold = 128,
+    this.xPosition = 0,
+    this.yPosition = 0,
+    this.rotation = ZplRotation.normal,
+  }) : _originalWidth = width {
+    if (width <= 0) {
+      throw ArgumentError('Width must be positive');
+    }
+    if (threshold < 0 || threshold > 255) {
+      throw ArgumentError('Threshold must be between 0 and 255');
+    }
+  }
 
   /// The widget to be converted to ZPL
   final Widget widget;
 
-  /// The desired width of the ZPL image, defaults to 560
-  int width;
+  /// The original desired width of the ZPL image, defaults to 560
+  final int _originalWidth;
+
+  /// The threshold value for binarization (0-255), defaults to 128
+  final int threshold;
+
+  /// X position on the label where the image should be placed
+  final int xPosition;
+
+  /// Y position on the label where the image should be placed
+  final int yPosition;
+
+  /// Rotation setting for the image
+  final ZplRotation rotation;
+
+  /// The actual width of the ZPL image (adjusted to nearest multiple of 8)
+  late final int width;
 
   /// The calculated height of the ZPL image
   late final int height;
@@ -41,7 +85,8 @@ class ImageZplConverter {
     final screenshot = await _screenshot();
     final greyScaleImage = _convertToGreyScale(screenshot);
     final resizedImage = _resizeImage(greyScaleImage);
-    final pixelBits = _binarizeImage(resizedImage);
+    final rotatedImage = _rotateImage(resizedImage);
+    final pixelBits = _binarizeImage(rotatedImage);
     final pixelBytes = _byteRepresentation(pixelBits);
     final hexBody = _hexRepresentation(pixelBytes);
 
@@ -65,8 +110,11 @@ class ImageZplConverter {
   /// Converts the image to greyscale
   img.Image _convertToGreyScale(Uint8List image) {
     final decodedImage = img.decodeImage(image);
+    if (decodedImage == null) {
+      throw ArgumentError('Failed to decode image. Invalid image format.');
+    }
 
-    final greyScaleImage = img.grayscale(decodedImage!);
+    final greyScaleImage = img.grayscale(decodedImage);
 
     return greyScaleImage;
   }
@@ -74,65 +122,97 @@ class ImageZplConverter {
   /// Resizes the image to the desired width and height
   ///
   /// Sizes are rounded up to the nearest multiple of 8 for byte divisibility
-  /// Size and aspect ratio are constrained to Label mode standards
+  /// Preserves original aspect ratio
   img.Image _resizeImage(img.Image image) {
-    width = _findNearestEightMultiple(width);
-    height = _calculateHeight();
+    width = _findNearestEightMultiple(_originalWidth);
+    height = _calculateHeight(image);
     final resizedImage = img.copyResize(image, width: width, height: height);
 
     return resizedImage;
+  }
+
+  /// Rotates the image based on the rotation setting
+  ///
+  /// Updates width and height if the rotation is 90 or 270 degrees
+  img.Image _rotateImage(img.Image image) {
+    img.Image rotatedImage;
+
+    switch (rotation) {
+      case ZplRotation.normal:
+        rotatedImage = image;
+        break;
+      case ZplRotation.rotate90:
+        rotatedImage = img.copyRotate(image, angle: 90);
+        // Swap width and height for 90-degree rotation
+        final tempWidth = width;
+        width = height;
+        height = tempWidth;
+        break;
+      case ZplRotation.rotate180:
+        rotatedImage = img.copyRotate(image, angle: 180);
+        break;
+      case ZplRotation.rotate270:
+        rotatedImage = img.copyRotate(image, angle: 270);
+        // Swap width and height for 270-degree rotation
+        final tempWidth = width;
+        width = height;
+        height = tempWidth;
+        break;
+    }
+
+    return rotatedImage;
   }
 
   /// Converts the image to binary
   ///
   /// Each pixel is converted to a single bit, with 1 representing a dark pixel
   List<int> _binarizeImage(img.Image image) {
-    final List<int> pixelBits = [];
+    final List<int> pixelBits = <int>[];
+    pixelBits.length =
+        image.width * image.height; // Pre-allocate for better performance
+    int index = 0;
 
     // Convert image pixels to binary bits
     for (int h = 0; h < image.height; h++) {
       for (int w = 0; w < image.width; w++) {
-        final rgb = image.getPixelSafe(w, h);
+        final pixel = image.getPixelSafe(w, h);
 
-        Uint32List list = Uint32List.fromList([rgb]);
-        Uint8List byteData = list.buffer.asUint8List();
+        // Extract red component which represents grayscale value
+        // Since the image is already grayscale, all RGB components are the same
+        // In image package v4, use pixel.r to get red component
+        final grayscaleValue = pixel.r;
 
-        int bit = 0;
+        // Threshold image: If pixel is darker than threshold, set bit to 1
+        final bit = grayscaleValue < threshold ? 1 : 0;
 
-        // Threshold image
-        // If pixel is darker than 50% grey, set bit to 1
-        if (byteData.first < 128 && byteData.last > 128) {
-          bit = 1;
-        }
-
-        pixelBits.add(bit);
+        pixelBits[index++] = bit;
       }
     }
 
     return pixelBits;
   }
 
-  /// Converts the binaraized image to bytes
+  /// Converts the binarized image to bytes
   ///
   /// Each byte represents 8 consecutive pixels
+  /// ZPL uses LSB (Least Significant Bit) first bit ordering
   List<int> _byteRepresentation(List<int> bits) {
-    final List<int> pixelBytes = [];
+    if (bits.isEmpty) {
+      throw ArgumentError('Bits array cannot be empty');
+    }
 
-    // Group bits into bytes
-    for (int i = 0; i < bits.length; i += 8) {
-      // If there are less than 8 bits left, pad with 0s
-      if (i + 8 > bits.length) {
-        final remaining = 8 - (bits.length - i);
-        final lastByte = List.filled(remaining, 0);
-        final int val = int.parse(lastByte.join(""), radix: 2);
-        pixelBytes.add(val);
+    final numBytes = (bits.length / 8).ceil();
+    final List<int> pixelBytes = List<int>.filled(numBytes, 0);
 
-        break;
+    // Group bits into bytes using bitwise operations
+    // ZPL expects LSB first bit ordering (bit 0 is rightmost)
+    for (int i = 0; i < bits.length; i++) {
+      final byteIndex = i ~/ 8;
+      final bitPosition = i % 8; // LSB first for ZPL
+
+      if (bits[i] == 1) {
+        pixelBytes[byteIndex] |= (1 << bitPosition);
       }
-
-      final byte = bits.sublist(i, i + 8);
-      final int val = int.parse(byte.join(""), radix: 2);
-      pixelBytes.add(val);
     }
 
     return pixelBytes;
@@ -142,18 +222,29 @@ class ImageZplConverter {
   ///
   /// This representation is required by ZPL standards for image printing
   String _hexRepresentation(List<int> bytes) {
-    final hexBody = const HexEncoder().convert(bytes);
+    // Use StringBuffer for efficient string concatenation
+    final buffer = StringBuffer();
 
-    return hexBody;
+    for (final byte in bytes) {
+      // Convert to hex with uppercase letters and ensure 2 digits
+      buffer.write(byte.toRadixString(16).toUpperCase().padLeft(2, '0'));
+    }
+
+    return buffer.toString();
   }
 
   /// Generates the ZPL command
   ///
   /// Requires the total number of bytes, the number of bytes per row, and the
   /// hex string representation of the image
+  ///
+  /// ZPL GFA command format: ^GFA,a,b,c,data
+  /// a = Total bytes in graphic
+  /// b = Bytes per row
+  /// c = Total bytes in graphic (same as a)
   String _generateZpl(int totalBytes, int byteWidth, String hexBody) {
     final zplCommand =
-        '^XA^FO0,0^GFA,$totalBytes,$totalBytes,$byteWidth,$hexBody^XZ';
+        '^XA^FO$xPosition,$yPosition^GFA,$totalBytes,$byteWidth,$totalBytes,$hexBody^FS^XZ';
 
     return zplCommand;
   }
@@ -171,11 +262,28 @@ class ImageZplConverter {
 
   /// Calculates the height of the image based on the width
   ///
-  /// The height is calculated to be half the width, following Labels' aspect ratio
-  int _calculateHeight() {
-    int height = width ~/ 2;
+  /// Preserves the original aspect ratio from the source image
+  int _calculateHeight(img.Image sourceImage) {
+    final aspectRatio = sourceImage.height / sourceImage.width;
+    final calculatedHeight = (width * aspectRatio).round();
 
-    return _findNearestEightMultiple(height);
+    return _findNearestEightMultiple(calculatedHeight);
+  }
+
+  /// Creates a widget wrapper that applies rotation at the Flutter widget level
+  ///
+  /// This is useful when you want to rotate the widget itself before screenshot,
+  /// rather than rotating the image after capture
+  static Widget createRotatedWidget(Widget child, ZplRotation rotation) {
+    switch (rotation) {
+      case ZplRotation.normal:
+        return child;
+      case ZplRotation.rotate90:
+        return RotatedBox(quarterTurns: 1, child: child);
+      case ZplRotation.rotate180:
+        return RotatedBox(quarterTurns: 2, child: child);
+      case ZplRotation.rotate270:
+        return RotatedBox(quarterTurns: 3, child: child);
+    }
   }
 }
-
