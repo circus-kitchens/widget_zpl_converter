@@ -31,12 +31,77 @@ final myWidget = Container(
 );
 ```
 
-Create a `ZplConverter` object and pass the widget to the constructor:
+Create an `ImageZplConverter` object and pass the widget to the constructor:
 ```
-final zplConverter = ZplConverter(myWidget);
+final zplConverter = ImageZplConverter(myWidget);
 ```
 
-You can then use the toZpl() method to convert any Flutter widget to a ZPL/ZPL2 command:
+You can optionally specify a custom width (defaults to 560):
 ```
-final zplCommand = zplConverter.toZpl();
+final zplConverter = ImageZplConverter(myWidget, width: 400);
 ```
+
+Configure additional options:
+```
+final zplConverter = ImageZplConverter(
+  myWidget,
+  width: 400,
+  threshold: 128,        // Binarization threshold (0-255)
+  xPosition: 50,         // X position on label
+  yPosition: 30,         // Y position on label
+  rotation: ZplRotation.rotate90,  // Rotation angle
+);
+```
+
+You can then use the convert() method to convert any Flutter widget to a ZPL/ZPL2 command:
+```
+final zplCommand = await zplConverter.convert();
+```
+
+## Rotation Support
+
+The package supports rotation in 90-degree increments:
+
+### Method 1: Image-level rotation (after screenshot)
+```dart
+// Rotate the captured image during ZPL conversion
+final zplConverter = ImageZplConverter(
+  myWidget,
+  rotation: ZplRotation.rotate90,  // Rotates the image 90° clockwise
+);
+```
+
+### Method 2: Widget-level rotation (before screenshot)
+```dart
+// Create a rotated widget wrapper
+final rotatedWidget = ImageZplConverter.createRotatedWidget(
+  myWidget, 
+  ZplRotation.rotate90
+);
+
+// Then convert the rotated widget
+final zplConverter = ImageZplConverter(rotatedWidget);
+```
+
+### Available rotation options:
+- `ZplRotation.normal` - No rotation (0°)
+- `ZplRotation.rotate90` - 90° clockwise
+- `ZplRotation.rotate180` - 180° rotation
+- `ZplRotation.rotate270` - 270° clockwise (90° counterclockwise)
+
+## Performance Improvements
+
+This package has been optimized for performance with the following improvements:
+
+- **Efficient memory allocation**: Pre-allocates lists to avoid dynamic resizing
+- **Optimized image processing**: Direct pixel value extraction without unnecessary buffer operations
+- **Fast bit-to-byte conversion**: Uses bitwise operations instead of string parsing
+- **Efficient rotation**: Direct image transformation with proper dimension handling
+- **Reduced dependencies**: Removed unnecessary hex package dependency
+- **Better error handling**: Validates inputs and provides meaningful error messages
+
+## Time Complexity
+
+- Image binarization: O(width × height) - optimal for pixel processing
+- Byte conversion: O(n) where n is number of bits - uses efficient bitwise operations
+- Hex conversion: O(n) where n is number of bytes - uses StringBuffer for optimal string concatenation
