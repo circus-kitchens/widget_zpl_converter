@@ -31,32 +31,30 @@ final myWidget = Container(
 );
 ```
 
-Create an `ImageZplConverter` object and pass the widget to the constructor:
-```
-final zplConverter = ImageZplConverter(myWidget);
+## Simple Usage (Recommended)
+
+Convert any widget to ZPL with one line:
+```dart
+String zpl = await ImageZplConverter.convertWidget(myWidget);
 ```
 
-You can optionally specify a custom width (defaults to 560):
-```
-final zplConverter = ImageZplConverter(myWidget, width: 400);
-```
+## Advanced Usage
 
-Configure additional options:
-```
-final zplConverter = ImageZplConverter(
+For more control over the conversion:
+```dart
+final converter = ImageZplConverter(
   myWidget,
-  width: 400,
+  width: 400,            // Image width in pixels
   threshold: 128,        // Binarization threshold (0-255)
   xPosition: 50,         // X position on label
   yPosition: 30,         // Y position on label
   rotation: ZplRotation.rotate90,  // Rotation angle
 );
+
+String zpl = await converter.convert();
 ```
 
-You can then use the convert() method to convert any Flutter widget to a ZPL/ZPL2 command:
-```
-final zplCommand = await zplConverter.convert();
-```
+The ZPL command is now ready to be sent to your thermal printer!
 
 ## Rotation Support
 
@@ -88,6 +86,24 @@ final zplConverter = ImageZplConverter(rotatedWidget);
 - `ZplRotation.rotate90` - 90° clockwise
 - `ZplRotation.rotate180` - 180° rotation
 - `ZplRotation.rotate270` - 270° clockwise (90° counterclockwise)
+
+## Example App
+
+A complete example application is included in the `/example` directory that demonstrates all features:
+
+- Interactive widget selection (4 sample widgets)
+- Real-time configuration controls (rotation, threshold, positioning)
+- Live ZPL output with copy-to-clipboard functionality
+- Visual preview of widgets before conversion
+
+To run the example:
+```bash
+cd example
+flutter pub get
+flutter run
+```
+
+The example app showcases practical usage patterns and provides a testing environment for the package.
 
 ## Performance Improvements
 

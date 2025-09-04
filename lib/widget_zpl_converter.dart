@@ -23,7 +23,16 @@ enum ZplRotation {
 
 /// Converts any Flutter Widget to a print-ready ZPL command. Intended for Label mode printing.
 ///
-/// See [ImageZplConverter.convert] for usage
+/// Simple usage:
+/// ```dart
+/// String zpl = await ImageZplConverter.convertWidget(myWidget);
+/// ```
+///
+/// Advanced usage with options:
+/// ```dart
+/// final converter = ImageZplConverter(myWidget, width: 400, threshold: 100);
+/// String zpl = await converter.convert();
+/// ```
 class ImageZplConverter {
   /// Creates a new [ImageZplConverter]
   ImageZplConverter(
@@ -90,8 +99,11 @@ class ImageZplConverter {
     final pixelBytes = _byteRepresentation(pixelBits);
     final hexBody = _hexRepresentation(pixelBytes);
 
-    final bytesPerRow = (width / 8).ceil();
-    final totalBytes = bytesPerRow * height;
+    // Calculate bytes based on the actual image dimensions after all transformations
+    final imageWidth = rotatedImage.width;
+    final imageHeight = rotatedImage.height;
+    final bytesPerRow = (imageWidth / 8).ceil();
+    final totalBytes = bytesPerRow * imageHeight;
 
     final zpl = _generateZpl(totalBytes, bytesPerRow, hexBody);
 
@@ -102,9 +114,19 @@ class ImageZplConverter {
   ///
   /// Returns the image as a [Uint8List]
   Future<Uint8List> _screenshot() async {
-    final screenshot = await _screenshotController.captureFromWidget(widget);
+    try {
+      final screenshot = await _screenshotController.captureFromWidget(
+        widget,
+        pixelRatio: 1.0, // Ensure consistent pixel ratio
+        delay: const Duration(milliseconds: 20), // Small delay for rendering
+      );
 
-    return screenshot.buffer.asUint8List();
+      return screenshot.buffer.asUint8List();
+    } catch (e) {
+      throw Exception('Failed to capture widget screenshot: $e. '
+          'This may happen on web platforms or with complex widgets. '
+          'Try running on mobile/desktop or using a simpler widget.');
+    }
   }
 
   /// Converts the image to greyscale
@@ -167,9 +189,8 @@ class ImageZplConverter {
   ///
   /// Each pixel is converted to a single bit, with 1 representing a dark pixel
   List<int> _binarizeImage(img.Image image) {
-    final List<int> pixelBits = <int>[];
-    pixelBits.length =
-        image.width * image.height; // Pre-allocate for better performance
+    final totalPixels = image.width * image.height;
+    final List<int> pixelBits = List<int>.filled(totalPixels, 0);
     int index = 0;
 
     // Convert image pixels to binary bits
@@ -195,7 +216,7 @@ class ImageZplConverter {
   /// Converts the binarized image to bytes
   ///
   /// Each byte represents 8 consecutive pixels
-  /// ZPL uses LSB (Least Significant Bit) first bit ordering
+  /// ZPL uses MSB (Most Significant Bit) first bit ordering
   List<int> _byteRepresentation(List<int> bits) {
     if (bits.isEmpty) {
       throw ArgumentError('Bits array cannot be empty');
@@ -205,14 +226,19 @@ class ImageZplConverter {
     final List<int> pixelBytes = List<int>.filled(numBytes, 0);
 
     // Group bits into bytes using bitwise operations
-    // ZPL expects LSB first bit ordering (bit 0 is rightmost)
+    // ZPL expects MSB first bit ordering (bit 7 is leftmost)
     for (int i = 0; i < bits.length; i++) {
       final byteIndex = i ~/ 8;
-      final bitPosition = i % 8; // LSB first for ZPL
+      final bitPosition = 7 - (i % 8); // MSB first for ZPL
 
       if (bits[i] == 1) {
         pixelBytes[byteIndex] |= (1 << bitPosition);
       }
+    }
+
+    // Validate the output
+    if (pixelBytes.isEmpty) {
+      throw Exception('Failed to convert bits to bytes - no bytes generated');
     }
 
     return pixelBytes;
@@ -238,13 +264,23 @@ class ImageZplConverter {
   /// Requires the total number of bytes, the number of bytes per row, and the
   /// hex string representation of the image
   ///
-  /// ZPL GFA command format: ^GFA,a,b,c,data
-  /// a = Total bytes in graphic
-  /// b = Bytes per row
-  /// c = Total bytes in graphic (same as a)
+  /// ZPL GFA command format: ^GFA,totalBytes,totalBytes,bytesPerRow,data
+  /// ^GFA = Graphic Field ASCII (command with ASCII hex encoding)
+  /// totalBytes: Total number of bytes in the graphic
+  /// bytesPerRow: Number of bytes per row
   String _generateZpl(int totalBytes, int byteWidth, String hexBody) {
+    // According to Zebra ZPL specification, ^GFA format is:
+    // ^GFA,b,c,d,data where:
+    // ^GFA = Graphic Field ASCII (the 'A' is part of the command, not a parameter)
+    // b = binary byte count (total bytes to be transmitted)
+    // c = graphic field count (total bytes comprising the graphic format)
+    // d = bytes per row (number of bytes in each row)
+    // data = ASCII hexadecimal data
+    //
+    // Example: ^GFA,8,8,1,FF00FF00FF00FF00
+    // This creates an 8x8 pixel image with alternating black/white horizontal stripes
     final zplCommand =
-        '^XA^FO$xPosition,$yPosition^GFA,$totalBytes,$byteWidth,$totalBytes,$hexBody^FS^XZ';
+        '^XA^FO$xPosition,$yPosition^GFA,$totalBytes,$totalBytes,$byteWidth,$hexBody^FS^XZ';
 
     return zplCommand;
   }
@@ -285,5 +321,32 @@ class ImageZplConverter {
       case ZplRotation.rotate270:
         return RotatedBox(quarterTurns: 3, child: child);
     }
+  }
+
+  /// Simple static method to convert any widget to ZPL with default settings
+  ///
+  /// This is the easiest way to use the package:
+  /// ```dart
+  /// String zpl = await ImageZplConverter.convertWidget(myWidget);
+  /// ```
+  ///
+  /// For more control, use the constructor and [convert] method instead.
+  static Future<String> convertWidget(
+    Widget widget, {
+    int width = 560,
+    int threshold = 128,
+    int xPosition = 0,
+    int yPosition = 0,
+    ZplRotation rotation = ZplRotation.normal,
+  }) async {
+    final converter = ImageZplConverter(
+      widget,
+      width: width,
+      threshold: threshold,
+      xPosition: xPosition,
+      yPosition: yPosition,
+      rotation: rotation,
+    );
+    return await converter.convert();
   }
 }
