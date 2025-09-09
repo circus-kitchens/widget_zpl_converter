@@ -7,46 +7,50 @@ void main() {
   group('Example App Tests', () {
     testWidgets('App loads without errors', (WidgetTester tester) async {
       // Build our app and trigger a frame.
-      await tester.pumpWidget(const MyApp());
+      await tester.pumpWidget(const ZplConverterExampleApp());
 
       // Verify that the app title is displayed
-      expect(find.text('Widget ZPL Converter Demo'), findsOneWidget);
+      expect(find.text('Widget to ZPL Converter Demo'), findsOneWidget);
 
       // Verify that the main components are present
-      expect(find.text('Select Widget to Convert'), findsOneWidget);
-      expect(find.text('Configuration'), findsOneWidget);
-      expect(find.text('Convert to ZPL'), findsOneWidget);
+      expect(find.text('Select Widget to Convert:'), findsOneWidget);
+      expect(find.text('ZPL Parameters:'), findsOneWidget);
+      expect(find.text('Generate ZPL'), findsOneWidget);
     });
 
     testWidgets('Widget selection works', (WidgetTester tester) async {
-      await tester.pumpWidget(const MyApp());
+      await tester.pumpWidget(const ZplConverterExampleApp());
 
-      // Find the dropdown
-      expect(find.text('Simple Text'), findsOneWidget);
+      // Find the dropdown with the first widget (10x5cm Perfect Fit Label)
+      expect(find.text('10x5cm Perfect Fit Label'), findsOneWidget);
 
-      // Tap on the dropdown
-      await tester.tap(find.byType(DropdownButtonFormField<int>));
+      // Find the first dropdown (widget selection)
+      final widgetDropdown = find.byType(DropdownButton<int>).first;
+      await tester.tap(widgetDropdown);
       await tester.pumpAndSettle();
 
-      // Check if options are available
-      expect(find.text('Icon Card'), findsOneWidget);
+      // Check if other options are available
+      expect(find.text('Letter Selector'), findsOneWidget);
+      expect(find.text('QR Code'), findsOneWidget);
     });
 
     testWidgets('Configuration controls are present', (
       WidgetTester tester,
     ) async {
-      await tester.pumpWidget(const MyApp());
+      await tester.pumpWidget(const ZplConverterExampleApp());
 
       // Check for rotation dropdown
-      expect(find.text('0° (Normal)'), findsOneWidget);
+      expect(find.text('Normal (0°)'), findsOneWidget);
 
-      // Check for sliders
+      // Check for ZPL parameter sliders
       expect(find.text('Width: 560 px'), findsOneWidget);
       expect(find.text('Threshold: 128'), findsOneWidget);
+      expect(find.text('Pixel Ratio: 2.0x'), findsOneWidget);
 
-      // Check for position inputs
-      expect(find.text('X Position'), findsOneWidget);
-      expect(find.text('Y Position'), findsOneWidget);
+      // Check for label dimension controls
+      expect(find.text('Label Width: 10.0 cm'), findsOneWidget);
+      expect(find.text('Label Height: 5.0 cm'), findsOneWidget);
+      expect(find.text('Printer DPI: 203'), findsOneWidget);
     });
 
     test('ZPL enum values are correct', () {

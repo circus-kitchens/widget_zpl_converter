@@ -1,302 +1,535 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:widget_zpl_converter/widget_zpl_converter.dart';
 
+import 'letter_selector.dart';
+
 void main() {
-  runApp(const MyApp());
+  runApp(const ZplConverterExampleApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ZplConverterExampleApp extends StatelessWidget {
+  const ZplConverterExampleApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Widget ZPL Converter Demo',
+      title: 'ZPL Converter Demo',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const ZplConverterDemo(),
+      home: const ZplConverterHomePage(title: 'Widget to ZPL Converter Demo'),
     );
   }
 }
 
-class ZplConverterDemo extends StatefulWidget {
-  const ZplConverterDemo({super.key});
+class ZplConverterHomePage extends StatefulWidget {
+  const ZplConverterHomePage({super.key, required this.title});
+
+  final String title;
 
   @override
-  State<ZplConverterDemo> createState() => _ZplConverterDemoState();
+  State<ZplConverterHomePage> createState() => _ZplConverterHomePageState();
 }
 
-class _ZplConverterDemoState extends State<ZplConverterDemo> {
-  String _zplOutput = '';
-  bool _isLoading = false;
-  ZplRotation _selectedRotation = ZplRotation.normal;
-  int _threshold = 128;
-  int _width = 560;
-  int _xPosition = 0;
-  int _yPosition = 0;
+class _ZplConverterHomePageState extends State<ZplConverterHomePage> {
+  String _generatedZpl = '';
+  bool _isGenerating = false;
   int _selectedWidgetIndex = 0;
-  // Removed test mode - always use actual conversion // Test mode toggle
 
-  final List<Widget> _sampleWidgets = [
-    // Simple Text Widget
-    Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 2),
-        borderRadius: BorderRadius.circular(8),
+  // ZPL Parameters
+  int _width = 560;
+  int _threshold = 128;
+  double _pixelRatio = 2.0;
+  ZplRotation _rotation = ZplRotation.normal;
+
+  // Label Dimensions
+  double _labelWidthCm = 10.0;
+  double _labelHeightCm = 5.0;
+  int _dpi = 203;
+
+  final List<WidgetExample> _widgetExamples = [
+    WidgetExample(
+      name: '10x5cm Perfect Fit Label',
+      description: 'Optimized layout for 10x5cm labels at 203 DPI',
+      widget: _build10x5cmLabel(),
+    ),
+    WidgetExample(
+      name: 'Letter Selector',
+      description: 'Custom widget with letters and borders',
+      widget: const LetterSelector(
+        selectedSectionType: SiloSectionType.c,
+        sizingUnit: 10,
       ),
-      child: const Text(
-        'Hello ZPL!',
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
+    ),
+    WidgetExample(
+      name: 'QR Code',
+      description: 'QR code with embedded data',
+      widget: QrImageView(
+        data: 'https://flutter.dev',
+        version: QrVersions.auto,
+        size: 200.0,
+        backgroundColor: Colors.white,
+        eyeStyle: const QrEyeStyle(
+          eyeShape: QrEyeShape.square,
+          color: Colors.black,
+        ),
+        dataModuleStyle: const QrDataModuleStyle(
+          dataModuleShape: QrDataModuleShape.square,
           color: Colors.black,
         ),
       ),
     ),
-
-    // Card with Icon
-    Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.qr_code, size: 48, color: Colors.black),
-          SizedBox(height: 8),
-          Text(
-            'Scan Me',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
+    WidgetExample(
+      name: 'Business Card',
+      description: 'Sample business card layout',
+      widget: Container(
+        width: 350,
+        height: 200,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'John Doe',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
             ),
-          ),
-        ],
+            SizedBox(height: 8),
+            Text(
+              'Software Engineer',
+              style: TextStyle(fontSize: 16, color: Colors.black54),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'john.doe@example.com',
+              style: TextStyle(fontSize: 14, color: Colors.black),
+            ),
+            Text(
+              '+1 (555) 123-4567',
+              style: TextStyle(fontSize: 14, color: Colors.black),
+            ),
+          ],
+        ),
       ),
     ),
-
-    // Product Label
-    Container(
-      width: 200,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 1),
-      ),
-      child: const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'PRODUCT',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+    WidgetExample(
+      name: 'Shipping Label',
+      description: 'Sample shipping label with details',
+      widget: Container(
+        width: 400,
+        height: 300,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'SHIPPING LABEL',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
             ),
-          ),
-          Text(
-            'Widget ZPL Demo',
-            style: TextStyle(fontSize: 12, color: Colors.black),
-          ),
-          SizedBox(height: 4),
-          Text(
-            'SKU: WZD-001',
-            style: TextStyle(fontSize: 10, color: Colors.black),
-          ),
-          Text(
-            'Price: \$29.99',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
+            const SizedBox(height: 16),
+            const Text(
+              'FROM:',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
             ),
-          ),
-        ],
+            const Text(
+              'Acme Corp\n123 Main St\nAnytown, ST 12345',
+              style: TextStyle(fontSize: 10, color: Colors.black),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'TO:',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
+            ),
+            const Text(
+              'Jane Smith\n456 Oak Ave\nSomewhere, ST 67890',
+              style: TextStyle(fontSize: 10, color: Colors.black),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Date: ${DateFormat('MM/dd/yyyy').format(DateTime.now())}',
+              style: const TextStyle(fontSize: 10, color: Colors.black),
+            ),
+            const Text(
+              'Tracking: 1Z999AA1234567890',
+              style: TextStyle(fontSize: 10, color: Colors.black),
+            ),
+          ],
+        ),
       ),
     ),
-
-    // Custom Graphics
-    Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black, width: 2),
+    WidgetExample(
+      name: 'Simple Text',
+      description: 'Basic text widget for testing',
+      widget: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black),
+        ),
+        child: const Text(
+          'Hello ZPL!',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
       ),
-      child: const Column(
-        mainAxisSize: MainAxisSize.min,
+    ),
+  ];
+
+  // Build a widget optimized for 10x5cm labels at 203 DPI (800x400 pixels)
+  static Widget _build10x5cmLabel() {
+    return Container(
+      width: 800, // 10cm at 203 DPI ≈ 800 pixels
+      height: 400, // 5cm at 203 DPI ≈ 400 pixels
+      color: Colors.white,
+      child: Stack(
         children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.warning, color: Colors.black, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'FRAGILE',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
+          // Border
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.black, width: 2),
+              ),
+            ),
+          ),
+
+          // Header Section
+          Positioned(
+            top: 8,
+            left: 8,
+            right: 8,
+            child: Container(
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Center(
+                child: Text(
+                  'PREMIUM PRODUCT',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 2.0,
+                  ),
                 ),
               ),
-            ],
+            ),
           ),
-          SizedBox(height: 8),
-          Text(
-            'Handle with Care',
-            style: TextStyle(fontSize: 12, color: Colors.black),
+
+          // Left Column - Product Info
+          Positioned(
+            top: 80,
+            left: 16,
+            width: 420,
+            bottom: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'PRODUCT CODE',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'PRD-2024-XL-001',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                const Text(
+                  'DESCRIPTION',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Premium Quality Label\nOptimized for 10x5cm',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.black,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Row(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'BATCH',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          DateFormat('yyyyMMdd').format(DateTime.now()),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 40),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'QTY',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const Text(
+                          '100 PCS',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const Spacer(),
+
+                // Bottom barcode-style lines
+                SizedBox(
+                  height: 40,
+                  child: Column(
+                    children: List.generate(8, (index) {
+                      return Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 1),
+                          color: index % 2 == 0
+                              ? Colors.black
+                              : Colors.transparent,
+                          width: index.isEven ? 200 : 150,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Right Column - QR Code and Status
+          Positioned(
+            top: 80,
+            right: 16,
+            width: 320,
+            bottom: 16,
+            child: Column(
+              children: [
+                // QR Code
+                Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black, width: 1),
+                  ),
+                  child: QrImageView(
+                    data:
+                        'PRD-2024-XL-001-${DateFormat('yyyyMMdd').format(DateTime.now())}',
+                    version: QrVersions.auto,
+                    size: 118,
+                    backgroundColor: Colors.white,
+                    eyeStyle: const QrEyeStyle(
+                      eyeShape: QrEyeShape.square,
+                      color: Colors.black,
+                    ),
+                    dataModuleStyle: const QrDataModuleStyle(
+                      dataModuleShape: QrDataModuleShape.square,
+                      color: Colors.black,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                const Text(
+                  'SCAN FOR DETAILS',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Status indicators
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'QUALITY\nAPPROVED',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.black, width: 2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'EXP: ${DateFormat('MM/yyyy').format(DateTime.now().add(const Duration(days: 365)))}',
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+
+                const Spacer(),
+
+                // Serial number at bottom
+                Text(
+                  'SN: ${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-    ),
-  ];
-
-  final List<String> _widgetNames = [
-    'Simple Text',
-    'Icon Card',
-    'Product Label',
-    'Warning Label',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    // No initialization needed - always use actual conversion
+    );
   }
 
-  Future<void> _convertToZpl() async {
+  Future<void> _generateZpl() async {
     setState(() {
-      _isLoading = true;
-      _zplOutput = '';
+      _isGenerating = true;
+      _generatedZpl = '';
     });
 
     try {
-      // Use the simple static method for conversion
-      final zpl = await ImageZplConverter.convertWidget(
-        _sampleWidgets[_selectedWidgetIndex],
+      final selectedWidget = _widgetExamples[_selectedWidgetIndex].widget;
+
+      final converter = ImageZplConverter(
+        selectedWidget,
         width: _width,
         threshold: _threshold,
-        xPosition: _xPosition,
-        yPosition: _yPosition,
-        rotation: _selectedRotation,
+        pixelRatio: _pixelRatio,
+        rotation: _rotation,
+        labelWidthCm: _labelWidthCm,
+        labelHeightCm: _labelHeightCm,
+        dpi: _dpi,
       );
 
-      // Validate the generated ZPL before setting state
-      if (zpl.isNotEmpty && !zpl.contains('null')) {
-        setState(() {
-          _zplOutput = zpl;
-          _isLoading = false;
-        });
+      final zpl = await converter.convert();
 
-        // Show success message
-        if (mounted && context.mounted) {
-          try {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'ZPL generated successfully! ${zpl.length} characters',
-                ),
-                backgroundColor: Colors.green,
-              ),
-            );
-          } catch (e) {
-            if (!kIsWeb) {
-              debugPrint('Error showing success snackbar: $e');
-            }
-          }
-        }
+      // Add dimension information and validation
+      final dimensionInfo = StringBuffer();
+      dimensionInfo.writeln(
+        '// Generated ZPL for ${_labelWidthCm}x${_labelHeightCm}cm label at ${_dpi}DPI',
+      );
+      dimensionInfo.writeln(
+        '// Output dimensions: ${converter.outputWidthCm.toStringAsFixed(2)}x${converter.outputHeightCm.toStringAsFixed(2)}cm',
+      );
+      dimensionInfo.writeln(
+        '// Pixel dimensions: ${converter.width}x${converter.height}px',
+      );
+
+      final warning = converter.getLabelFitWarning();
+      if (warning != null) {
+        dimensionInfo.writeln('// ⚠️  $warning');
       } else {
-        throw Exception('Generated ZPL is invalid or contains null values');
+        dimensionInfo.writeln('// ✅ Image fits within label dimensions');
       }
-    } catch (e, stackTrace) {
-      if (!kIsWeb) {
-        debugPrint('Error during conversion: $e');
-        debugPrint('Stack trace: $stackTrace');
-      }
+      dimensionInfo.writeln('');
+      dimensionInfo.write(zpl);
 
       setState(() {
-        _zplOutput = '''Error during conversion: $e
-
-This might happen if:
-1. Screenshot functionality is not supported on this platform
-2. The widget is too complex to capture
-3. There's an issue with image processing
-
-Try:
-- Running on a mobile device or desktop
-- Selecting a different widget
-- Reducing the width/threshold values
-
-Technical details:
-$stackTrace''';
-        _isLoading = false;
+        _generatedZpl = dimensionInfo.toString();
       });
-
-      // Show error message
-      if (mounted && context.mounted) {
-        try {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Conversion failed: ${e.toString()}'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5),
-            ),
-          );
-        } catch (snackbarError) {
-          if (!kIsWeb) {
-            debugPrint('Error showing error snackbar: $snackbarError');
-          }
-        }
-      }
+    } catch (e) {
+      setState(() {
+        _generatedZpl = 'Error generating ZPL: $e';
+      });
+    } finally {
+      setState(() {
+        _isGenerating = false;
+      });
     }
   }
 
   void _copyToClipboard() {
-    if (_zplOutput.isNotEmpty && _zplOutput != 'null') {
-      try {
-        Clipboard.setData(ClipboardData(text: _zplOutput));
-        if (mounted && context.mounted) {
-          try {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('ZPL copied to clipboard!')),
-            );
-          } catch (e) {
-            if (!kIsWeb) {
-              debugPrint('Error showing clipboard success snackbar: $e');
-            }
-          }
-        }
-      } catch (e) {
-        if (!kIsWeb) {
-          debugPrint('Error copying to clipboard: $e');
-        }
-        if (mounted && context.mounted) {
-          try {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Failed to copy: ${e.toString()}'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          } catch (snackbarError) {
-            if (!kIsWeb) {
-              debugPrint(
-                'Error showing clipboard error snackbar: $snackbarError',
-              );
-            }
-          }
-        }
-      }
+    if (_generatedZpl.isNotEmpty) {
+      Clipboard.setData(ClipboardData(text: _generatedZpl));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('ZPL copied to clipboard!')));
     }
   }
 
@@ -304,63 +537,95 @@ $stackTrace''';
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Widget ZPL Converter Demo'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(widget.title),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Widget Selection
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Select Widget to Convert',
+                      'Select Widget to Convert:',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<int>(
-                      initialValue: _selectedWidgetIndex,
-                      decoration: const InputDecoration(
-                        labelText: 'Sample Widget',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: List.generate(_widgetNames.length, (index) {
-                        return DropdownMenuItem(
-                          value: index,
-                          child: Text(_widgetNames[index]),
+                    const SizedBox(height: 12),
+                    DropdownButton<int>(
+                      value: _selectedWidgetIndex,
+                      isExpanded: true,
+                      items: _widgetExamples.asMap().entries.map((entry) {
+                        return DropdownMenuItem<int>(
+                          value: entry.key,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                entry.value.name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                entry.value.description,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
                         );
-                      }),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedWidgetIndex = value!;
-                          _zplOutput = '';
-                        });
+                      }).toList(),
+                      onChanged: (int? value) {
+                        if (value != null) {
+                          setState(() {
+                            _selectedWidgetIndex = value;
+                          });
+                        }
                       },
                     ),
-                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Widget Preview
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     const Text(
-                      'Preview:',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        border: Border.all(color: Colors.grey),
-                        borderRadius: BorderRadius.circular(8),
+                      'Widget Preview:',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                      child: Center(
-                        child: _sampleWidgets[_selectedWidgetIndex],
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: _widgetExamples[_selectedWidgetIndex].widget,
                       ),
                     ),
                   ],
@@ -370,116 +635,111 @@ $stackTrace''';
 
             const SizedBox(height: 16),
 
-            // Configuration Controls
+            // ZPL Parameters
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Configuration',
+                      'ZPL Parameters:',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Rotation
-                    DropdownButtonFormField<ZplRotation>(
-                      initialValue: _selectedRotation,
-                      decoration: const InputDecoration(
-                        labelText: 'Rotation',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: ZplRotation.normal,
-                          child: Text('0° (Normal)'),
-                        ),
-                        DropdownMenuItem(
-                          value: ZplRotation.rotate90,
-                          child: Text('90° Clockwise'),
-                        ),
-                        DropdownMenuItem(
-                          value: ZplRotation.rotate180,
-                          child: Text('180°'),
-                        ),
-                        DropdownMenuItem(
-                          value: ZplRotation.rotate270,
-                          child: Text('270° Clockwise'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedRotation = value!;
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Width slider
-                    Text('Width: $_width px'),
-                    Slider(
-                      value: _width.toDouble(),
-                      min: 200,
-                      max: 800,
-                      divisions: 30,
-                      onChanged: (value) {
-                        setState(() {
-                          _width = value.round();
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Threshold slider
-                    Text('Threshold: $_threshold'),
-                    Slider(
-                      value: _threshold.toDouble(),
-                      min: 0,
-                      max: 255,
-                      divisions: 255,
-                      onChanged: (value) {
-                        setState(() {
-                          _threshold = value.round();
-                        });
-                      },
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Position controls
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
-                          child: TextFormField(
-                            initialValue: _xPosition.toString(),
-                            decoration: const InputDecoration(
-                              labelText: 'X Position',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              _xPosition = int.tryParse(value) ?? 0;
-                            },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Width: $_width px'),
+                              Slider(
+                                value: _width.toDouble(),
+                                min: 200,
+                                max: 1000,
+                                divisions: 16,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _width = value.round();
+                                  });
+                                },
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
-                          child: TextFormField(
-                            initialValue: _yPosition.toString(),
-                            decoration: const InputDecoration(
-                              labelText: 'Y Position',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              _yPosition = int.tryParse(value) ?? 0;
-                            },
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Threshold: $_threshold'),
+                              Slider(
+                                value: _threshold.toDouble(),
+                                min: 0,
+                                max: 255,
+                                divisions: 17,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _threshold = value.round();
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Pixel Ratio: ${_pixelRatio.toStringAsFixed(1)}x',
+                              ),
+                              Slider(
+                                value: _pixelRatio,
+                                min: 1.0,
+                                max: 4.0,
+                                divisions: 6,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _pixelRatio = value;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Rotation:'),
+                              DropdownButton<ZplRotation>(
+                                value: _rotation,
+                                isExpanded: true,
+                                items: ZplRotation.values.map((rotation) {
+                                  return DropdownMenuItem<ZplRotation>(
+                                    value: rotation,
+                                    child: Text(_getRotationName(rotation)),
+                                  );
+                                }).toList(),
+                                onChanged: (ZplRotation? value) {
+                                  if (value != null) {
+                                    setState(() {
+                                      _rotation = value;
+                                    });
+                                  }
+                                },
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -491,86 +751,197 @@ $stackTrace''';
 
             const SizedBox(height: 16),
 
-            // Convert Button
-            ElevatedButton.icon(
-              onPressed: _isLoading ? null : _convertToZpl,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.transform),
-              label: Text(_isLoading ? 'Converting...' : 'Convert to ZPL'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.all(16),
+            // Label Dimensions
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Label Dimensions:',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Label Width: ${_labelWidthCm.toStringAsFixed(1)} cm',
+                              ),
+                              Slider(
+                                value: _labelWidthCm,
+                                min: 2.0,
+                                max: 20.0,
+                                divisions: 36,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _labelWidthCm = value;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Label Height: ${_labelHeightCm.toStringAsFixed(1)} cm',
+                              ),
+                              Slider(
+                                value: _labelHeightCm,
+                                min: 1.0,
+                                max: 15.0,
+                                divisions: 28,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _labelHeightCm = value;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Printer DPI: $_dpi'),
+                              DropdownButton<int>(
+                                value: _dpi,
+                                isExpanded: true,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 203,
+                                    child: Text('203 DPI (Standard)'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 300,
+                                    child: Text('300 DPI (High Resolution)'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 600,
+                                    child: Text('600 DPI (Ultra High)'),
+                                  ),
+                                ],
+                                onChanged: (int? value) {
+                                  if (value != null) {
+                                    setState(() {
+                                      _dpi = value;
+                                    });
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Common Label Sizes:'),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  _buildLabelSizeChip('4x6"', 10.2, 15.2),
+                                  _buildLabelSizeChip('4x3"', 10.2, 7.6),
+                                  _buildLabelSizeChip('2x1"', 5.1, 2.5),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
 
             const SizedBox(height: 16),
 
+            // Generate Button
+            ElevatedButton(
+              onPressed: _isGenerating ? null : _generateZpl,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: _isGenerating
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 12),
+                        Text('Generating ZPL...'),
+                      ],
+                    )
+                  : const Text('Generate ZPL', style: TextStyle(fontSize: 16)),
+            ),
+
             // ZPL Output
-            if (_zplOutput.isNotEmpty) ...[
+            if (_generatedZpl.isNotEmpty) ...[
+              const SizedBox(height: 16),
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            'Generated ZPL',
+                            'Generated ZPL:',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const Spacer(),
-                          IconButton(
+                          ElevatedButton.icon(
                             onPressed: _copyToClipboard,
                             icon: const Icon(Icons.copy),
-                            tooltip: 'Copy to clipboard',
+                            label: const Text('Copy'),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Container(
                         width: double.infinity,
+                        height: 200, // Fixed height instead of Expanded
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.grey[900],
-                          borderRadius: BorderRadius.circular(8),
+                          color: Colors.grey[50],
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                        child: SelectableText(
-                          _zplOutput,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'ZPL Length: ${_zplOutput.length} characters',
-                            style: TextStyle(
+                        child: SingleChildScrollView(
+                          child: SelectableText(
+                            _generatedZpl,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
                               fontSize: 12,
-                              color: Colors.grey[600],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Tip: Test this ZPL at labelary.com/zpl.html to validate format',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.blue[600],
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
@@ -582,4 +953,41 @@ $stackTrace''';
       ),
     );
   }
+
+  String _getRotationName(ZplRotation rotation) {
+    switch (rotation) {
+      case ZplRotation.normal:
+        return 'Normal (0°)';
+      case ZplRotation.rotate90:
+        return 'Rotate 90°';
+      case ZplRotation.rotate180:
+        return 'Rotate 180°';
+      case ZplRotation.rotate270:
+        return 'Rotate 270°';
+    }
+  }
+
+  Widget _buildLabelSizeChip(String name, double widthCm, double heightCm) {
+    return ActionChip(
+      label: Text(name),
+      onPressed: () {
+        setState(() {
+          _labelWidthCm = widthCm;
+          _labelHeightCm = heightCm;
+        });
+      },
+    );
+  }
+}
+
+class WidgetExample {
+  final String name;
+  final String description;
+  final Widget widget;
+
+  const WidgetExample({
+    required this.name,
+    required this.description,
+    required this.widget,
+  });
 }

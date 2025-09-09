@@ -1,5 +1,3 @@
-library widget_zpl_converter;
-
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -28,10 +26,23 @@ enum ZplRotation {
 /// String zpl = await ImageZplConverter.convertWidget(myWidget);
 /// ```
 ///
-/// Advanced usage with options:
+/// Advanced usage with high-resolution and label dimension options:
 /// ```dart
-/// final converter = ImageZplConverter(myWidget, width: 400, threshold: 100);
+/// final converter = ImageZplConverter(
+///   myWidget,
+///   width: 400,
+///   threshold: 100,
+///   pixelRatio: 3.0, // High resolution for crisp output
+///   labelWidthCm: 10.0, // 10cm wide label
+///   labelHeightCm: 6.0,  // 6cm tall label
+///   dpi: 203, // Printer DPI (dots per inch)
+/// );
 /// String zpl = await converter.convert();
+///
+/// // Check if the image fits on the label
+/// if (!converter.validateLabelFit()) {
+///   print(converter.getLabelFitWarning());
+/// }
 /// ```
 class ImageZplConverter {
   /// Creates a new [ImageZplConverter]
@@ -42,12 +53,28 @@ class ImageZplConverter {
     this.xPosition = 0,
     this.yPosition = 0,
     this.rotation = ZplRotation.normal,
+    this.pixelRatio = 2.0,
+    this.labelWidthCm = 10.0,
+    this.labelHeightCm = 6.0,
+    this.dpi = 203,
   }) : _originalWidth = width {
     if (width <= 0) {
       throw ArgumentError('Width must be positive');
     }
     if (threshold < 0 || threshold > 255) {
       throw ArgumentError('Threshold must be between 0 and 255');
+    }
+    if (pixelRatio <= 0) {
+      throw ArgumentError('Pixel ratio must be positive');
+    }
+    if (labelWidthCm <= 0) {
+      throw ArgumentError('Label width must be positive');
+    }
+    if (labelHeightCm <= 0) {
+      throw ArgumentError('Label height must be positive');
+    }
+    if (dpi <= 0) {
+      throw ArgumentError('DPI must be positive');
     }
   }
 
@@ -68,6 +95,18 @@ class ImageZplConverter {
 
   /// Rotation setting for the image
   final ZplRotation rotation;
+
+  /// The pixel ratio for high resolution screenshots, defaults to 2.0 for better quality
+  final double pixelRatio;
+
+  /// The physical width of the label in centimeters
+  final double labelWidthCm;
+
+  /// The physical height of the label in centimeters
+  final double labelHeightCm;
+
+  /// The printer DPI (dots per inch), defaults to 203 DPI (common for Zebra printers)
+  final int dpi;
 
   /// The actual width of the ZPL image (adjusted to nearest multiple of 8)
   late final int width;
@@ -117,23 +156,37 @@ class ImageZplConverter {
     try {
       final screenshot = await _screenshotController.captureFromWidget(
         widget,
-        pixelRatio: 1.0, // Ensure consistent pixel ratio
+        pixelRatio:
+            pixelRatio, // Use configurable pixel ratio for high resolution
         delay: const Duration(milliseconds: 20), // Small delay for rendering
       );
 
       return screenshot.buffer.asUint8List();
     } catch (e) {
-      throw Exception('Failed to capture widget screenshot: $e. '
-          'This may happen on web platforms or with complex widgets. '
-          'Try running on mobile/desktop or using a simpler widget.');
+      throw Exception(
+        'Failed to capture widget screenshot: $e. '
+        'This may happen on web platforms or with complex widgets. '
+        'Try running on mobile/desktop or using a simpler widget.',
+      );
     }
   }
 
   /// Converts the image to greyscale
   img.Image _convertToGreyScale(Uint8List image) {
+    if (image.isEmpty) {
+      throw ArgumentError('Image data cannot be empty');
+    }
+
     final decodedImage = img.decodeImage(image);
     if (decodedImage == null) {
-      throw ArgumentError('Failed to decode image. Invalid image format.');
+      throw ArgumentError(
+        'Failed to decode image. Invalid image format or corrupted data.',
+      );
+    }
+
+    // Validate image dimensions
+    if (decodedImage.width <= 0 || decodedImage.height <= 0) {
+      throw ArgumentError('Image must have positive width and height');
     }
 
     final greyScaleImage = img.grayscale(decodedImage);
@@ -144,11 +197,18 @@ class ImageZplConverter {
   /// Resizes the image to the desired width and height
   ///
   /// Sizes are rounded up to the nearest multiple of 8 for byte divisibility
-  /// Preserves original aspect ratio
+  /// Preserves original aspect ratio and uses high-quality interpolation
   img.Image _resizeImage(img.Image image) {
     width = _findNearestEightMultiple(_originalWidth);
     height = _calculateHeight(image);
-    final resizedImage = img.copyResize(image, width: width, height: height);
+
+    // Use cubic interpolation for better quality when resizing
+    final resizedImage = img.copyResize(
+      image,
+      width: width,
+      height: height,
+      interpolation: img.Interpolation.cubic,
+    );
 
     return resizedImage;
   }
@@ -217,6 +277,7 @@ class ImageZplConverter {
   ///
   /// Each byte represents 8 consecutive pixels
   /// ZPL uses MSB (Most Significant Bit) first bit ordering
+  /// Optimized for memory efficiency with large images
   List<int> _byteRepresentation(List<int> bits) {
     if (bits.isEmpty) {
       throw ArgumentError('Bits array cannot be empty');
@@ -227,12 +288,25 @@ class ImageZplConverter {
 
     // Group bits into bytes using bitwise operations
     // ZPL expects MSB first bit ordering (bit 7 is leftmost)
-    for (int i = 0; i < bits.length; i++) {
-      final byteIndex = i ~/ 8;
-      final bitPosition = 7 - (i % 8); // MSB first for ZPL
+    // Process in chunks for better memory efficiency
+    const int chunkSize = 8192; // Process 8KB at a time
 
-      if (bits[i] == 1) {
-        pixelBytes[byteIndex] |= (1 << bitPosition);
+    for (
+      int chunkStart = 0;
+      chunkStart < bits.length;
+      chunkStart += chunkSize
+    ) {
+      final chunkEnd = (chunkStart + chunkSize < bits.length)
+          ? chunkStart + chunkSize
+          : bits.length;
+
+      for (int i = chunkStart; i < chunkEnd; i++) {
+        final byteIndex = i ~/ 8;
+        final bitPosition = 7 - (i % 8); // MSB first for ZPL
+
+        if (bits[i] == 1) {
+          pixelBytes[byteIndex] |= (1 << bitPosition);
+        }
       }
     }
 
@@ -280,7 +354,7 @@ class ImageZplConverter {
     // Example: ^GFA,8,8,1,FF00FF00FF00FF00
     // This creates an 8x8 pixel image with alternating black/white horizontal stripes
     final zplCommand =
-        '^XA^FO$xPosition,$yPosition^GFA,$totalBytes,$totalBytes,$byteWidth,$hexBody^FS^XZ';
+        "^XA^FO$xPosition,$yPosition^GFA,$totalBytes,$totalBytes,$byteWidth,$hexBody^FS^XZ";
 
     return zplCommand;
   }
@@ -294,6 +368,55 @@ class ImageZplConverter {
     }
 
     return value;
+  }
+
+  /// Converts centimeters to pixels based on the printer DPI
+  int cmToPixels(double cm) {
+    // Convert cm to inches, then to pixels
+    final inches = cm / 2.54; // 1 inch = 2.54 cm
+    return (inches * dpi).round();
+  }
+
+  /// Converts pixels to centimeters based on the printer DPI
+  double pixelsToCm(int pixels) {
+    // Convert pixels to inches, then to cm
+    final inches = pixels / dpi;
+    return inches * 2.54; // 1 inch = 2.54 cm
+  }
+
+  /// Gets the maximum label width in pixels
+  int get maxLabelWidthPixels => cmToPixels(labelWidthCm);
+
+  /// Gets the maximum label height in pixels
+  int get maxLabelHeightPixels => cmToPixels(labelHeightCm);
+
+  /// Gets the actual output width in centimeters
+  double get outputWidthCm => pixelsToCm(width);
+
+  /// Gets the actual output height in centimeters
+  double get outputHeightCm => pixelsToCm(height);
+
+  /// Validates that the generated image fits within the specified label dimensions
+  bool validateLabelFit() {
+    return width <= maxLabelWidthPixels && height <= maxLabelHeightPixels;
+  }
+
+  /// Gets a warning message if the image doesn't fit on the label
+  String? getLabelFitWarning() {
+    if (validateLabelFit()) return null;
+
+    final widthOverflow = width > maxLabelWidthPixels
+        ? 'Width: ${outputWidthCm.toStringAsFixed(2)}cm > ${labelWidthCm}cm'
+        : null;
+    final heightOverflow = height > maxLabelHeightPixels
+        ? 'Height: ${outputHeightCm.toStringAsFixed(2)}cm > ${labelHeightCm}cm'
+        : null;
+
+    final issues = [
+      widthOverflow,
+      heightOverflow,
+    ].where((e) => e != null).join(', ');
+    return 'Warning: Image exceeds label dimensions. $issues';
   }
 
   /// Calculates the height of the image based on the width
@@ -338,6 +461,10 @@ class ImageZplConverter {
     int xPosition = 0,
     int yPosition = 0,
     ZplRotation rotation = ZplRotation.normal,
+    double pixelRatio = 2.0,
+    double labelWidthCm = 10.0,
+    double labelHeightCm = 5.0,
+    int dpi = 203,
   }) async {
     final converter = ImageZplConverter(
       widget,
@@ -346,6 +473,10 @@ class ImageZplConverter {
       xPosition: xPosition,
       yPosition: yPosition,
       rotation: rotation,
+      pixelRatio: pixelRatio,
+      labelWidthCm: labelWidthCm,
+      labelHeightCm: labelHeightCm,
+      dpi: dpi,
     );
     return await converter.convert();
   }
